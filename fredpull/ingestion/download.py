@@ -127,40 +127,63 @@ def fetch_one_series(sid, fred, start_date, min_obs):
 # -------------------------------------------------
 
 def run_download_loop(ids, total, expected_chunks, existing_chunks, fred):
-    MAX_WORKERS = 6
+    MAX_WORKERS = 3  # safer for bad connection
 
     for chunk_idx in range(expected_chunks):
-        if chunk_idx in existing_chunks:
-            continue
 
         start = chunk_idx * CHUNK_SIZE
         end = min(start + CHUNK_SIZE, total)
 
+        final_file = f"{CHUNK_DIR}/chunk_{chunk_idx}.parquet"
+        temp_file = f"{CHUNK_DIR}/chunk_{chunk_idx}.parquet.partial"
+
+        # ✅ LOAD PARTIAL IF EXISTS
+        if os.path.exists(final_file):
+            print(f"Skipping completed chunk {chunk_idx}")
+            continue
+
+        if os.path.exists(temp_file):
+            print(f"Resuming partial chunk {chunk_idx}")
+            df_existing = pd.read_parquet(temp_file)
+            data = df_existing.to_dict()
+        else:
+            data = {}
+
         batch_ids = ids[start:end]
 
-        if not batch_ids:
-            break
+        remaining_ids = [sid for sid in batch_ids if sid not in data]
 
-        print(f"\nDownloading chunk {chunk_idx} ({start}:{end})")
-
-        data = {}
+        print(f"\nDownloading chunk {chunk_idx} ({len(data)}/{len(batch_ids)} done)")
 
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+
             futures = [
                 executor.submit(fetch_one_series, sid, fred, START_DATE, MIN_OBS)
-                for sid in batch_ids
+                for sid in remaining_ids
             ]
 
-            for future in tqdm(as_completed(futures), total=len(futures)):
+            for i, future in enumerate(tqdm(as_completed(futures), total=len(futures))):
+
                 result = future.result()
+
                 if result:
                     sid, series = result
                     data[sid] = series
 
-        save_chunk_atomic(data, chunk_idx, CHUNK_DIR)
+                # ✅ SAVE EVERY 10 SERIES
+                if i % 10 == 0:
+                    pd.DataFrame(data).to_parquet(temp_file)
+
+        # ✅ FINAL SAVE
+        pd.DataFrame(data).to_parquet(final_file)
+
+        # cleanup
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
+
+        print(f"Saved chunk {chunk_idx}")
 
     print("\nDownload complete.")
-
 
 # -------------------------------------------------
 # MAIN
