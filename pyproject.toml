@@ -1,0 +1,20 @@
+[project]
+name = "fredpull"
+version = "0.1.0"
+description = "Bulk FRED downloader and panel builder"
+readme = "README.md"
+requires-python = ">=3.10"
+
+dependencies = [
+    "pandas",
+    "numpy",
+    "tqdm",
+    "requests",
+    "python-dotenv",
+    "fredapi",
+    "pyarrow",
+]
+
+[tool.setuptools.packages.find]
+include = ["fredpull*"]
+exclude = ["data*"]
