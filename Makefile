@@ -26,6 +26,9 @@ download: dirs
 merge: dirs
 	$(PYTHON) scripts/merge.py
 
+analyze: dirs
+	$(PYTHON) scripts/analyze.py
+
 build: metadata download merge
 	@echo "DONE"
 
